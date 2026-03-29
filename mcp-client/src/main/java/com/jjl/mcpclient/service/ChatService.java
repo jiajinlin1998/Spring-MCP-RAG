@@ -1,5 +1,6 @@
 package com.jjl.mcpclient.service;
 
+import com.jjl.mcpclient.entity.ChatEntity;
 import org.springframework.ai.chat.model.ChatResponse;
 import reactor.core.publisher.Flux;
 
@@ -25,4 +26,10 @@ public interface ChatService {
      * @return 回复
      */
     public Flux<String> streamChatStringTest(String msg);
+
+    /**
+     * 测试聊天
+     * @param chatEntity 大模型交互
+     */
+    void doChat(ChatEntity chatEntity);
 }

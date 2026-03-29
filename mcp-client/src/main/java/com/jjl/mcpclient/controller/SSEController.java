@@ -41,5 +41,14 @@ public class SSEController {
         return "OK";
     }
 
+    /** SSE发送群发消息
+     * @param
+     * @return
+     */
+    @GetMapping("sedMagALL")
+    public Object sedMagALL(@RequestParam String msg){
+        SSEService.sedMagToAll(msg);
+        return "OK";
+    }
 
 }

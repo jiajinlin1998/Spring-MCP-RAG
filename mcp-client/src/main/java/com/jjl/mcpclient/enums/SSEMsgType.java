@@ -11,7 +11,7 @@ public enum SSEMsgType {
     CUSTOM_EVENT("customEvent","自定义事件"),
     DONE("done","完成");
 
-    private final String type;
+    public final String type;
     public final String value;
 
     SSEMsgType (String type, String value) {

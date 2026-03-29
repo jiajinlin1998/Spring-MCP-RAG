@@ -35,7 +35,7 @@ public class SSEService {
     }
 
     /**
-     * 真正的业务逻辑
+     * 真正的业务逻辑 单个消息
      */
     public static void sedMag(String userId, String msg, SSEMsgType msgType){
 
@@ -49,6 +49,21 @@ public class SSEService {
 
     }
 
+    /**
+     * 真正的业务逻辑 群发
+     */
+    public static void sedMagToAll(String msg){
+
+        if(CollectionUtil.isEmpty(sseClients)){
+            return;
+        }
+
+        sseClients.forEach((userId, sseEmitter) -> {
+                sendEmitterMsg(userId, msg, SSEMsgType.MESSAGE, sseEmitter);
+            }
+        );
+    }
+
     /*
     * 发送sse消息
      */
@@ -56,7 +71,7 @@ public class SSEService {
         SseEmitter.SseEventBuilder event = SseEmitter.event()
                 .id(userId)
                 .data(msg)
-                .name(msgType.value);
+                .name(msgType.type);
         try {
             sseEmitter.send(event);
         } catch (Exception e) {
