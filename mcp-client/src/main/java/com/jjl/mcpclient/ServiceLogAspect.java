@@ -40,7 +40,7 @@ public class ServiceLogAspect {
         //long TokenTime = endTime - startTime;
         long TokenTime = stopWatch.getTotalTimeMillis();
         if(TokenTime > 3000){
-            log.error("方法名:{}, 耗时偏长:{}ms", point, TokenTime);
+            log.warn("方法名:{}, 耗时偏长:{}ms", point, TokenTime);
         }else if(TokenTime > 2000){
             log.warn("方法名:{}, 耗时中等:{}ms", point, TokenTime);
         }else {

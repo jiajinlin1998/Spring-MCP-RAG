@@ -2,7 +2,10 @@ package com.jjl.mcpclient.service;
 
 import com.jjl.mcpclient.entity.ChatEntity;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.document.Document;
 import reactor.core.publisher.Flux;
+
+import java.util.List;
 
 public interface ChatService {
 
@@ -32,4 +35,6 @@ public interface ChatService {
      * @param chatEntity 大模型交互
      */
     void doChat(ChatEntity chatEntity);
+
+    void doChatSearch(List<Document> documents, ChatEntity chatEntity);
 }
