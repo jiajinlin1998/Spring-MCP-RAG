@@ -21,7 +21,7 @@ public interface DocumentService {
     List<Document> select(String question);
 
     /**
-     * 前端联网搜索功能
+     * 本地知识库搜索
      * @return 文件列表
      */
     List<Document> search(String question);

@@ -36,5 +36,17 @@ public interface ChatService {
      */
     void doChat(ChatEntity chatEntity);
 
+    /**
+     * RAG知识库检索给大模型进行输出
+     * @param documents 文档
+     * @param chatEntity 大模型交互
+     */
     void doChatSearch(List<Document> documents, ChatEntity chatEntity);
+
+
+    /**
+     * 联网搜索
+     * @param chatEntity 大模型交互
+     */
+    void doInternetSearch(ChatEntity chatEntity);
 }

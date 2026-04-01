@@ -4,9 +4,12 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.json.JSONUtil;
 import com.jjl.mcpclient.entity.ChatEntity;
 import com.jjl.mcpclient.entity.ChatResponseEntity;
+import com.jjl.mcpclient.entity.SearchResult;
 import com.jjl.mcpclient.enums.SSEMsgType;
 import com.jjl.mcpclient.service.ChatService;
+import com.jjl.mcpclient.service.SearchService;
 import com.jjl.mcpclient.utils.SSEService;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -27,6 +30,9 @@ public class ChatServiceImpl implements ChatService {
 
     private ChatClient chatClient;
 
+    @Resource
+    private SearchService searchService;
+
     private String systemPrompt = """
                                     你是一个非常聪明的人工智能助手，能帮我做很多事，我给你取了一个名字，叫汤圆
                                    """;
@@ -41,6 +47,18 @@ public class ChatServiceImpl implements ChatService {
                                                     如果没有查到，请回复：不知道。
                                                     如果查到，请回复具体的内容。不相关的近似内容不必提到。
                                             """;
+
+    private static final String searchPrompt = """
+                                                    你是一个网龄20年的资深网络搜索助手，请根据互联网结果返回的上下文，并且结合用户的提问，生成并且输出专业的回答
+                                                    【上下文】
+                                                    {context}
+                                                    【问题】
+                                                    {question}
+                                                    【输出】
+                                                    如果没有查到，请回复：不知道。
+                                                    如果查到，请回复具体的内容。
+                                            """;
+
 
     public ChatServiceImpl(ChatClient.Builder  chatClientBuilder) {
         this.chatClient = chatClientBuilder
@@ -91,7 +109,7 @@ public class ChatServiceImpl implements ChatService {
         String botMsgId = chatEntity.getBotMsgId();
 
         //构建提示词
-        String context = null;
+        String context = "";
         if (CollectionUtil.isNotEmpty(documentList)) {
             context = documentList.stream()
                     .map(Document::getText)
@@ -116,6 +134,48 @@ public class ChatServiceImpl implements ChatService {
 
         SSEService.sedMag(userId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
 
+    }
+
+    @Override
+    public void doInternetSearch(ChatEntity chatEntity) {
+
+        String userId = chatEntity.getCurrentUserName();
+        String message = chatEntity.getMessage();
+        String botMsgId = chatEntity.getBotMsgId();
+
+        List<SearchResult> searchResultList =  searchService.searXNG(message);
+        String finalPrompt = buildSearchPrompt(message, searchResultList);
+
+        //组装提示词
+        Prompt prompt = new Prompt(finalPrompt);
+
+        log.info("提示词: {}", prompt);
+
+        Flux<String> stream = chatClient.prompt(prompt).stream().content();
+        List<String> list = stream.toStream().map(chatResPonse -> {
+            SSEService.sedMag(userId, chatResPonse, SSEMsgType.ADD);
+            log.info("用户: {}, 消息: {}", userId, chatResPonse);
+            return chatResPonse;
+        }).toList();
+
+        String collect = list.stream().collect(Collectors.joining());
+        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(collect, botMsgId);
+
+        SSEService.sedMag(userId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
+    }
+
+    private static String buildSearchPrompt(String question, List<SearchResult> searchResultList) {
+
+        StringBuilder context = new StringBuilder();
+
+        searchResultList.forEach(searchResult -> {
+            context.append(
+                    String.format("<context>\n[来源] %s \n [摘要] %s \n</context>\n",
+                            searchResult.getUrl(),
+                            searchResult.getContent()));
+        });
+
+        return searchPrompt.replace("{context}", context).replace("{question}", question);
     }
 
 }

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -49,9 +50,6 @@ public class SearchServiceImpl implements SearchService {
 
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .addHeader("Accept", "application/json, text/plain, */*")
-                .addHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .build();
 
         try (Response response = okHttpClient.newCall(request).execute()){
@@ -66,7 +64,7 @@ public class SearchServiceImpl implements SearchService {
 
                 SearXngResponse searXngResponse = JSONUtil.toBean(responseResult, SearXngResponse.class);
 
-                return searXngResponse.getResults();
+                return dealReult(searXngResponse.getResults());
             }
             log.error("请求失败:{}", response.message());
         } catch (IOException e) {
@@ -75,4 +73,19 @@ public class SearchServiceImpl implements SearchService {
 
         return Collections.emptyList();
     }
+
+    /**
+     * 处理结果 截取前 count 条数据，并排序
+     * @param results
+     * @return
+     */
+    private List<SearchResult> dealReult(List<SearchResult> results){
+
+        return results.subList(0, Math.min(count, results.size()))
+                .parallelStream()
+                .sorted(Comparator.comparingDouble(SearchResult::getScore).reversed())
+                .limit(count).toList();
+
+    }
+
 }
