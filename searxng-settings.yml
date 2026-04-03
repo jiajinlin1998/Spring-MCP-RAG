@@ -1,0 +1,8 @@
+search:
+  formats:
+    - html
+    - json
+
+server:
+  limiter: false
+  method: "GET"

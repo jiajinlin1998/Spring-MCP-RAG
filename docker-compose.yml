@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "6080:8080"
+    volumes:
+      - ./searxng-settings.yml:/etc/searxng/settings.yml
+    environment:
+      - SEARXNG_SECRET_KEY=LcroXqyzF7c3dyEQatoH6Jw7nMcHgr
+      - SEARXNG_LIMITER=false
+      - SEARXNG_PUBLIC_INSTANCE=false
+      - SEARXNG_METHOD=GET
