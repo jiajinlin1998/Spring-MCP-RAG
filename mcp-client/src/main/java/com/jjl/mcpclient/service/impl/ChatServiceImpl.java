@@ -15,6 +15,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -33,9 +34,7 @@ public class ChatServiceImpl implements ChatService {
     @Resource
     private SearchService searchService;
 
-    private String systemPrompt = """
-                                    你是一个非常聪明的人工智能助手，能帮我做很多事，我给你取了一个名字，叫汤圆
-                                   """;
+    private String systemPrompt = "你是一个非常聪明的人工智能助手，能帮我做很多事，我给你取了一个名字，叫汤圆";
 
     private static final String ragPrompt = """
                                                     基于上下文的知识库内容回答问题：
@@ -60,9 +59,10 @@ public class ChatServiceImpl implements ChatService {
                                             """;
 
 
-    public ChatServiceImpl(ChatClient.Builder  chatClientBuilder) {
+    public ChatServiceImpl(ChatClient.Builder chatClientBuilder,ToolCallbackProvider tools) {
         this.chatClient = chatClientBuilder
-                //.defaultSystem()
+                .defaultToolCallbacks(tools)
+                .defaultSystem(systemPrompt)
                 .build();
     }
 
@@ -86,7 +86,54 @@ public class ChatServiceImpl implements ChatService {
         String userId = chatEntity.getCurrentUserName();
         String message = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
+/*
+        try {
+            // 正确：使用 chatResponse() 才能接收 工具调用 + 流式输出
+            chatClient.prompt(message)
+                    .stream()
+                    .chatResponse()  // <--- 必须用这个！！！
+                    .subscribe(
+                            chatResponse -> {
+                                try {
+                                    // 检查是否有工具调用
+                                    if (chatResponse.getResult().getOutput().getToolCalls() != null && !chatResponse.getResult().getOutput().getToolCalls().isEmpty()) {
+                                        log.info("AI决定调用工具: {}", chatResponse.getResult().getOutput().getToolCalls());
+                                        // 工具调用会由Spring AI自动处理，不需要手动处理
+                                    }
+                                    
+                                    // 获取AI输出
+                                    String content = chatResponse.getResult().getOutput().getText();
 
+                                    if (content != null && !content.isEmpty()) {
+                                        SSEService.sedMag(userId, content, SSEMsgType.ADD);
+                                        log.info("用户: {}, 消息: {}", userId, content);
+                                    }
+                                } catch (Exception e) {
+                                    log.error("处理聊天响应异常", e);
+                                    SSEService.sedMag(userId, "处理响应时出错: " + e.getMessage(), SSEMsgType.MESSAGE);
+                                }
+                            },
+                            error -> {
+                                log.error("流式输出异常", error);
+                                // 检查是否是JSON解析错误
+                                if (error.getMessage().contains("No content to map due to end-of-input")) {
+                                    SSEService.sedMag(userId, "工具调用成功！文件已创建。", SSEMsgType.MESSAGE);
+                                } else {
+                                    SSEService.sedMag(userId, "出错了: " + error.getMessage(), SSEMsgType.MESSAGE);
+                                }
+                            },
+                            () -> {
+                                // 结束
+                                ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+                                SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
+                            }
+                    );
+        } catch (Exception e) {
+            log.error("启动聊天流异常", e);
+            SSEService.sedMag(userId, "启动聊天时出错: " + e.getMessage(), SSEMsgType.MESSAGE);
+            ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+            SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
+        }*/
         Flux<String> stream = chatClient.prompt(message).stream().content();
         List<String> list = stream.toStream().map(chatResPonse -> {
             SSEService.sedMag(userId, chatResPonse, SSEMsgType.ADD);
@@ -99,6 +146,7 @@ public class ChatServiceImpl implements ChatService {
 
         SSEService.sedMag(userId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
 
+
     }
 
 
@@ -108,32 +156,47 @@ public class ChatServiceImpl implements ChatService {
         String message = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
 
-        //构建提示词
-        String context = "";
-        if (CollectionUtil.isNotEmpty(documentList)) {
-            context = documentList.stream()
-                    .map(Document::getText)
-                    .collect(Collectors.joining("\n"));
+        try {
+            //构建提示词
+            String context = "";
+            if (CollectionUtil.isNotEmpty(documentList)) {
+                context = documentList.stream()
+                        .map(Document::getText)
+                        .collect(Collectors.joining("\n"));
 
+            }
+
+            //组装提示词
+            Prompt prompt = new Prompt(ragPrompt.replace("{context}",context).replace("{question}", message));
+
+            log.info("提示词: {}", prompt);
+
+            // 正确流式写法：来一条发一条，不阻塞、不吃 CPU
+            chatClient.prompt(prompt)
+                    .stream()
+                    .content()
+                    .subscribe(
+                            content -> {
+                                // 来一条发一条
+                                SSEService.sedMag(userId, content, SSEMsgType.ADD);
+                                log.info("用户: {}, 消息: {}", userId, content);
+                            },
+                            error -> {
+                                log.error("流式输出异常", error);
+                                SSEService.sedMag(userId, "出错了: " + error.getMessage(), SSEMsgType.MESSAGE);
+                            },
+                            () -> {
+                                // 全部发送完成
+                                ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+                                SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
+                            }
+                    );
+        } catch (Exception e) {
+            log.error("处理知识搜索请求时发生异常", e);
+            SSEService.sedMag(userId, "处理请求时出错: " + e.getMessage(), SSEMsgType.MESSAGE);
+            ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+            SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
         }
-
-        //组装提示词
-        Prompt prompt = new Prompt(ragPrompt.replace("{context}",context).replace("{question}", message));
-
-        log.info("提示词: {}", prompt);
-
-        Flux<String> stream = chatClient.prompt(prompt).stream().content();
-        List<String> list = stream.toStream().map(chatResPonse -> {
-            SSEService.sedMag(userId, chatResPonse, SSEMsgType.ADD);
-            log.info("用户: {}, 消息: {}", userId, chatResPonse);
-            return chatResPonse;
-        }).toList();
-
-        String collect = list.stream().collect(Collectors.joining());
-        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(collect, botMsgId);
-
-        SSEService.sedMag(userId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
-
     }
 
     @Override
@@ -143,25 +206,41 @@ public class ChatServiceImpl implements ChatService {
         String message = chatEntity.getMessage();
         String botMsgId = chatEntity.getBotMsgId();
 
-        List<SearchResult> searchResultList =  searchService.searXNG(message);
-        String finalPrompt = buildSearchPrompt(message, searchResultList);
+        try {
+            List<SearchResult> searchResultList =  searchService.searXNG(message);
+            String finalPrompt = buildSearchPrompt(message, searchResultList);
 
-        //组装提示词
-        Prompt prompt = new Prompt(finalPrompt);
+            //组装提示词
+            Prompt prompt = new Prompt(finalPrompt);
 
-        log.info("提示词: {}", prompt);
+            log.info("提示词: {}", prompt);
 
-        Flux<String> stream = chatClient.prompt(prompt).stream().content();
-        List<String> list = stream.toStream().map(chatResPonse -> {
-            SSEService.sedMag(userId, chatResPonse, SSEMsgType.ADD);
-            log.info("用户: {}, 消息: {}", userId, chatResPonse);
-            return chatResPonse;
-        }).toList();
-
-        String collect = list.stream().collect(Collectors.joining());
-        ChatResponseEntity chatResponseEntity = new ChatResponseEntity(collect, botMsgId);
-
-        SSEService.sedMag(userId, JSONUtil.toJsonStr(chatResponseEntity), SSEMsgType.FINISH);
+            // 正确流式写法：来一条发一条，不阻塞、不吃 CPU
+            chatClient.prompt(prompt)
+                    .stream()
+                    .content()
+                    .subscribe(
+                            content -> {
+                                // 来一条发一条
+                                SSEService.sedMag(userId, content, SSEMsgType.ADD);
+                                log.info("用户: {}, 消息: {}", userId, content);
+                            },
+                            error -> {
+                                log.error("流式输出异常", error);
+                                SSEService.sedMag(userId, "出错了: " + error.getMessage(), SSEMsgType.MESSAGE);
+                            },
+                            () -> {
+                                // 全部发送完成
+                                ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+                                SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
+                            }
+                    );
+        } catch (Exception e) {
+            log.error("处理联网搜索请求时发生异常", e);
+            SSEService.sedMag(userId, "处理请求时出错: " + e.getMessage(), SSEMsgType.MESSAGE);
+            ChatResponseEntity entity = new ChatResponseEntity("", botMsgId);
+            SSEService.sedMag(userId, JSONUtil.toJsonStr(entity), SSEMsgType.FINISH);
+        }
     }
 
     private static String buildSearchPrompt(String question, List<SearchResult> searchResultList) {

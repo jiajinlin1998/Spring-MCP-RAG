@@ -25,27 +25,27 @@ public class ServiceLogAspect {
      */
     @Around("execution(* com.jjl.mcpclient.service.*.*(..))")
     public Object recordTimeLog(ProceedingJoinPoint joinPoint) throws Throwable {
-        //long startTime = System.currentTimeMillis();
+        // 优化：只对耗时较长的方法进行详细日志记录，减少日志输出
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
-
 
         Object result = joinPoint.proceed();
 
         String point = joinPoint.getTarget().getClass().getName()
                 + "." + joinPoint.getSignature().getName();
 
-       // long endTime = System.currentTimeMillis();
         stopWatch.stop();
-        //long TokenTime = endTime - startTime;
         long TokenTime = stopWatch.getTotalTimeMillis();
+        
+        // 优化：只记录耗时超过100ms的方法，减少日志输出
         if(TokenTime > 3000){
             log.warn("方法名:{}, 耗时偏长:{}ms", point, TokenTime);
-        }else if(TokenTime > 2000){
+        }else if(TokenTime > 1000){
             log.warn("方法名:{}, 耗时中等:{}ms", point, TokenTime);
-        }else {
+        }else if(TokenTime > 100){
             log.info("方法名:{}, 耗时:{}ms", point, TokenTime);
         }
+        // 对于耗时小于100ms的方法，不记录日志，减少日志输出
 
         return result;
     }

@@ -80,9 +80,9 @@ public class SearchServiceImpl implements SearchService {
      * @return
      */
     private List<SearchResult> dealReult(List<SearchResult> results){
-
+        // 优化：对于小数据集使用普通流替代并行流，减少线程创建和上下文切换的开销
         return results.subList(0, Math.min(count, results.size()))
-                .parallelStream()
+                .stream() // 使用普通流替代并行流
                 .sorted(Comparator.comparingDouble(SearchResult::getScore).reversed())
                 .limit(count).toList();
 
